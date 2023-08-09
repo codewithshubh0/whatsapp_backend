@@ -10,11 +10,14 @@ app.use(express.urlencoded({extended:false}));
 const bcrypt = require("bcrypt");
 const { log } = require("console");
 const server = require("http").createServer(app);
-const multer = require("multer")
+const multer = require("multer");
+const { set } = require("mongoose");
 const io = require("socket.io")().listen(server,{cors :{origin:"*"}})
 // image upload
 const storage = multer.memoryStorage();
+
 const upload = multer({storage:storage});
+ 
 io.on('connection', (socket) => {
     io.emit("welcome","hello bhai"+socket.id );
    
@@ -100,23 +103,36 @@ app.get("/users/:UserId",async (req,res)=>{
             users : {$in: [req.params.UserId ]}
         });
         
-        if(conversation[0]!=null){
+        if(conversation!=[]){
            
              for(let convId of conversation){
-        
+                
                 const user1 = convId.users[0];
                 const user2 = convId.users[1];
+
+            //     if(user1==null){
+            //         console.log("user1");
+            //     }
+            //     if(user2==null){
+            //          console.log(user");
+            //    }
                 if(user1!=req.params.UserId){
                     const user = await users.findOne({_id:user1})
+                    if(user==null){
+                        console.log("null user1"+user1);
+                     }
                   friends[user.name] = convId._id;
                 }else{
 
                  const user = await users.findOne({_id:user2})
-                  
+                 if(user==null){
+                    console.log("null user2"+user2);
+                 }
                   friends[user.name] = convId._id;
                 }
+                console.log(friends);
              }
-
+            // console.log(friends);
              res.status(200).json(friends); 
         }else{
             res.status(200).json([]); 
@@ -127,17 +143,68 @@ app.get("/users/:UserId",async (req,res)=>{
     }
 })
 
+
+// app.get("/users/:UserId",async (req,res)=>{
+     
+//     var friends = {}
+//     try{
+//         const conversation =await Convo.find({
+//             users : {$in: [req.params.UserId ]}
+//         });
+        
+//         if(conversation[0]!=null){
+         
+//              for(let convId of conversation){
+//                 var ar = []
+//                 const user1 = convId.users[0];
+//                 const user2 = convId.users[1];
+//                 if(user1!=req.params.UserId){
+//                     const user = await users.findOne({_id:user1})
+//                  // friends[user.name] = convId._id;
+                 
+//                   friends[user.name] = [convId._id,user1]
+//                 }else{
+
+//                  const user = await users.findOne({_id:user2})
+                  
+//                   //friends[user.name] = convId._id;
+//                   friends[user.name] = [convId._id,user2]
+//                 }
+//              }
+//              //console.log(friends);
+//              res.status(200).json(friends); 
+//         }else{
+//             res.status(200).json([]); 
+//         }
+        
+//     }catch(err){
+//        res.status(400).json(err);
+//     }
+// })
+
+
 app.post("/converations/storeconversations",async(req,res)=>{
      
     console.log("coming convo");
-    const newconvo  = new Convo({users : req.body.users});
 
-    try{
-        const data =await newconvo.save();
-        res.status(200).json("new conversation saved"); 
-    }catch(err){
-       res.status(400).json(err);
-    }
+    const conv =await Convo.findOne({
+        users: {$all:[req.body.users[0],req.body.users[1]]}
+    });
+    
+   if(conv!=null){
+    console.log(conv +" already");
+    res.status(200).json("Already Added"); 
+   }else{
+        const newconvo  = new Convo({users : req.body.users});
+        
+        try{
+            const data =await newconvo.save();
+            res.status(200).json("new conversation saved"); 
+        }catch(err){
+        res.status(400).json(err);
+        }
+   }
+
 })
 
 app.delete("/converations/deleteconversations/:connectionId",async(req,res)=>{
@@ -196,18 +263,47 @@ app.get("/messages/getmessages/:conversationId",async (req,res)=>{
 
 app.post("/upload/uploadimages",upload.single("image"),async (req,res)=>{
     console.log(req.body.userId+" getting id");  
-    const image = new imagemodel({
-        userid:"64c53557f5de72c4b62dd2d5",
-        name:req.file.originalname,
-        image:{
+    
+
+
+    // const img =await imagemodel.replaceOne(
+    //     { userid: req.body.userId },
+    //     {
+    //                 userid:req.body.userId,
+    //                 name:req.file.originalname,
+    //                 image:{
+    //                     data:req.file.buffer,
+    //                     contentType:req.file.mimetype
+    //                 }
+    //     }
+    //  );
+    //  console.log(img);
+    const img =await imagemodel.find({userid:req.body.userId});
+    console.log(img);
+    if(img[0]!=null){
+        console.log("image found");
+        await imagemodel.updateOne({userid:req.body.userId},{  $set: {name:req.file.originalname,image:{
             data:req.file.buffer,
             contentType:req.file.mimetype
-        }
-    }); 
-  console.log(req.file);
+        }}});
+    }else{
+        console.log("no image found");
+        const image = new imagemodel({
+            userid:req.body.userId,
+            name:req.file.originalname,
+            image:{
+                data:req.file.buffer,
+                contentType:req.file.mimetype
+            }
+        }); 
+      console.log(req.file);
+      await image.save();
+    }
+    
+    
 //save image to mongodb
 
-    await image.save();
+    
  })
 
  app.get("/getimage/:UserId",async (req,res)=>{
